@@ -15,7 +15,7 @@ const Analytics = () => {
 
   const fetchHistory = async () => {
     try {
-      const res = await axios.get("http://localhost:5000/api/sessions/history");
+      const res = await axios.get("https://focusshield.onrender.com/api/sessions/history");
       if (res.data.success) {
         const sessions = res.data.sessions;
         setHistory(sessions);

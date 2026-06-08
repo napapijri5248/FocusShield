@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "FocusShield",
+  "version": "1.0.0",
+  "description": "Reclaim your attention with smart blocking, soft interventions, and focus session analytics.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "host_permissions": [
+    "http://localhost:5000/*"
+  ]
+}

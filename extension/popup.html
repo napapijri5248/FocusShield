@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FocusShield</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-area">
+        <span class="logo-shield">🛡️</span>
+        <h1 class="app-title">Focus<span>Shield</span></h1>
+      </div>
+      <button id="logout-btn" class="icon-btn hidden" title="Log Out">🚪</button>
+    </header>
+
+    <!-- Content Area -->
+    <main class="app-main">
+      <!-- 1. Logged Out View -->
+      <section id="logged-out-view" class="view">
+        <h2 class="view-title">Welcome back</h2>
+        <p class="view-subtitle">Log in to sync your focus blocks</p>
+        
+        <div id="login-error" class="error-banner hidden"></div>
+
+        <form id="login-form" class="auth-form">
+          <div class="form-group">
+            <label for="login-email">Email</label>
+            <input type="email" id="login-email" required placeholder="name@example.com">
+          </div>
+          <div class="form-group">
+            <label for="login-password">Password</label>
+            <input type="password" id="login-password" required placeholder="••••••••">
+          </div>
+          <button type="submit" id="submit-login-btn" class="btn btn-primary">Sign In</button>
+        </form>
+      </section>
+
+      <!-- 2. Logged In / Dashboard View -->
+      <section id="logged-in-view" class="view hidden">
+        <div class="user-profile">
+          <span class="welcome-label">Productive Mode</span>
+          <h3 id="user-display-name" class="user-name">User</h3>
+        </div>
+
+        <!-- Timer Panel -->
+        <div class="timer-card">
+          <div id="timer-display" class="timer-digits">25:00</div>
+          <div id="timer-status" class="timer-status-text">Ready to Focus</div>
+        </div>
+
+        <!-- Controls View -->
+        <div id="setup-controls" class="controls-panel">
+          <div class="form-group">
+            <label for="focus-duration">Duration (minutes)</label>
+            <select id="focus-duration" class="select-input">
+              <option value="1">1 Minute (Test)</option>
+              <option value="5">5 Minutes</option>
+              <option value="15">15 Minutes</option>
+              <option value="25" selected>25 Minutes</option>
+              <option value="50">50 Minutes</option>
+            </select>
+          </div>
+          <button id="start-session-btn" class="btn btn-emerald">Start Focus Session</button>
+        </div>
+
+        <!-- Active Session Controls -->
+        <div id="active-controls" class="controls-panel hidden">
+          <button id="end-session-btn" class="btn btn-danger">End Session Early</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <span class="status-indicator-dot"></span>
+      <span id="backend-status-text">Connecting to backend...</span>
+    </footer>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

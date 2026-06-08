@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+/* Define Custom Space-Dark Theme Variables for Tailwind CSS v4 */
+@theme {
+  --color-obsidian-950: #090d16;
+  --color-obsidian-900: #0f172a;
+  --color-obsidian-800: #1e293b;
+  --color-obsidian-700: #334155;
+  --color-violet-glow: rgba(139, 92, 246, 0.35);
+  --color-emerald-glow: rgba(16, 185, 129, 0.25);
+  
+  --font-sans: "Outfit", system-ui, -apple-system, sans-serif;
+}
+
+/* Global Styles */
+@layer base {
+  body {
+    background-color: var(--color-obsidian-950);
+    color: #f8fafc;
+    min-height: 100vh;
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+  }
+
+  /* Custom Glowing Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #090d16;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #8b5cf6;
+  }
+}
+
+/* Reusable Glassmorphism Utilities */
+.glass-panel {
+  background: rgba(30, 41, 59, 0.6) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2) !important;
+}
+
+.glass-panel-glow {
+  background: rgba(30, 41, 59, 0.6) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(139, 92, 246, 0.2) !important;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2), 0 0 20px rgba(139, 92, 246, 0.1) !important;
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #c084fc 0%, #8b5cf6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-emerald {
+  background: linear-gradient(135deg, #34d399 0%, #10b981 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

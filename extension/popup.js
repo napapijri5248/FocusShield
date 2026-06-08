@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = "https://focusshield.onrender.com/api";
 
 // DOM Elements
 const loggedOutView = document.getElementById("logged-out-view");
@@ -33,7 +33,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 // 1. Health Check
 async function checkBackendHealth() {
   try {
-    const res = await fetch("http://localhost:5000/");
+    const res = await fetch("https://focusshield.onrender.com/");
     if (res.ok) {
       statusDot.classList.add("online");
       backendStatusText.textContent = "FocusShield Service Active";

@@ -35,7 +35,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === "LOG_DISTRACTION") {
-    fetch("http://localhost:5000/api/sessions/distract", {
+    fetch("https://focusshield.onrender.com/api/sessions/distract", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

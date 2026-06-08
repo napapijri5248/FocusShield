@@ -3,7 +3,7 @@ import axios from "axios";
 import { useAuth } from "./AuthContext";
 
 const FocusContext = createContext(null);
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = "https://focusshield.onrender.com/api";
 
 export const FocusProvider = ({ children }) => {
   const { user } = useAuth();

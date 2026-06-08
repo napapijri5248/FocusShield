@@ -50,6 +50,9 @@ async function checkBackendHealth() {
 async function checkAuthAndInitialize() {
   chrome.storage.local.get(["token", "user"], async (data) => {
     if (data.token && data.user) {
+      // Request active session sync from server immediately on wakeup
+      chrome.runtime.sendMessage({ action: "SYNC_ACTIVE_SESSION" });
+
       // Validate token with profile endpoint
       try {
         const response = await fetch(`${API_BASE}/auth/profile`, {

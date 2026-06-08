@@ -96,6 +96,7 @@ export const FocusProvider = ({ children }) => {
     console.log("[Socket] Connecting to socket at", socketUrl);
     const socket = io(socketUrl, {
       auth: { token },
+      transports: ["websocket"],
       reconnection: true
     });
     socketRef.current = socket;

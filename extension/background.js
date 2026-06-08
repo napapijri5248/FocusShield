@@ -38,6 +38,7 @@ function initializeSocketConnection(token) {
 
   socket = io(socketUrl, {
     auth: { token },
+    transports: ["websocket"],
     reconnection: true,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
@@ -143,6 +144,14 @@ async function syncActiveSessionFromServer(token) {
 // Listen for message events from Popup or Web Client
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log("[Background Worker] Message Received:", message);
+
+  if (message.action === "SYNC_ACTIVE_SESSION") {
+    chrome.storage.local.get("token", (data) => {
+      if (data.token) {
+        syncActiveSessionFromServer(data.token);
+      }
+    });
+  }
 
   if (message.action === "START_FOCUS_TRACKER") {
     startSessionTimer(message.endTime);

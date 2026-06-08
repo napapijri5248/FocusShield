@@ -1,5 +1,7 @@
 require("dotenv").config();
 const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
@@ -7,12 +9,26 @@ const morgan = require("morgan");
 const { connectDB } = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
 const sessionRoutes = require("./routes/sessionRoutes");
+const socketService = require("./services/socketService");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Security Middlewares
-app.use(helmet());
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*", // Allow all origins for the API and extension
+    methods: ["GET", "POST"]
+  }
+});
+
+// Initialize Socket Service
+socketService.init(io);
+
+// Security Middlewares (disable CSP for API compatibility)
+app.use(helmet({
+  contentSecurityPolicy: false
+}));
 app.use(cors());
 
 // Logger
@@ -25,18 +41,18 @@ if (process.env.NODE_ENV === "development") {
 // Body Parser
 app.use(express.json());
 
-// Root Endpoint (Step 1)
+// Root Endpoint
 app.get("/", (req, res) => {
   res.json({ message: "FocusShield API Running" });
 });
 
-// Mount Auth Routes (Step 4 & 5)
+// Mount Auth Routes
 app.use("/api/auth", authRoutes);
 
-// Mount Session Routes (Step 6)
+// Mount Session Routes
 app.use("/api/sessions", sessionRoutes);
 
-// Centralized Error Handling Middleware (Step 8C)
+// Centralized Error Handling Middleware
 app.use((err, req, res, next) => {
   console.error("Global Error Intercepted:", err.stack);
   res.status(err.status || 500).json({
@@ -47,9 +63,9 @@ app.use((err, req, res, next) => {
 });
 
 // Start Server
-app.listen(PORT, async () => {
+server.listen(PORT, async () => {
   console.log(`[Server] FocusShield running in ${process.env.NODE_ENV} mode on port ${PORT}`);
   await connectDB();
 });
 
-module.exports = app; // For testing
+module.exports = server; // Export server for testing/use

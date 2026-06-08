@@ -77,6 +77,37 @@ const sessionService = {
     }
   },
 
+  // Get active focus session (not completed and not expired)
+  getActiveSession: async (userId) => {
+    if (dbConfig.isConnected()) {
+      const session = await Session.findOne({
+        userId,
+        completed: false,
+        endTime: { $exists: false }
+      }).sort({ startTime: -1 });
+
+      if (session) {
+        const endTime = new Date(session.startTime).getTime() + (session.duration * 1000);
+        if (Date.now() < endTime) {
+          return session;
+        }
+      }
+      return null;
+    } else {
+      const sessions = dbFallbackService.find("sessions", (s) => s.userId === userId && !s.completed && !s.endTime);
+      if (sessions && sessions.length > 0) {
+        // Sort by startTime descending
+        sessions.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
+        const session = sessions[0];
+        const endTime = new Date(session.startTime).getTime() + (session.duration * 1000);
+        if (Date.now() < endTime) {
+          return session;
+        }
+      }
+      return null;
+    }
+  },
+
   // Fetch session history for a specific user
   getUserSessions: async (userId) => {
     if (dbConfig.isConnected()) {

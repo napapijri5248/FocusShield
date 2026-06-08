@@ -1,49 +1,169 @@
-import React, { createContext, useState, useEffect, useContext } from "react";
+import React, { createContext, useState, useEffect, useContext, useRef } from "react";
 import axios from "axios";
+import { io } from "socket.io-client";
 import { useAuth } from "./AuthContext";
 
 const FocusContext = createContext(null);
 const API_BASE = "https://focusshield.onrender.com/api";
 
 export const FocusProvider = ({ children }) => {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [focusState, setFocusState] = useState("idle"); // 'idle', 'focus', 'break'
   const [timer, setTimer] = useState(1500); // Default 25 mins in seconds
   const [sessionDuration, setSessionDuration] = useState(1500);
   const [distractionCount, setDistractionCount] = useState(0);
 
-  // Restore Focus Session on load / reload
+  const socketRef = useRef(null);
+
+  // Restore Focus Session on load / reload from API or local storage
   useEffect(() => {
-    if (!user) {
+    if (!user || !token) {
       clearLocalFocusState();
       return;
     }
 
-    const storedSessionId = localStorage.getItem("activeSessionId");
-    const storedState = localStorage.getItem("focusState");
-    const storedEndTime = localStorage.getItem("sessionEndTime");
-    const storedDuration = localStorage.getItem("sessionDuration");
-    const storedDistractions = localStorage.getItem("sessionDistractionCount");
+    const fetchActiveSession = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/sessions/active`);
+        if (res.data.success && res.data.session) {
+          const session = res.data.session;
+          const endTimeMs = new Date(session.startTime).getTime() + (session.duration * 1000);
+          const timeLeftSecs = Math.ceil((endTimeMs - Date.now()) / 1000);
 
-    if (storedState === "focus" && storedEndTime && storedSessionId) {
-      const endTimeMs = parseInt(storedEndTime, 10);
-      const timeLeftSecs = Math.ceil((endTimeMs - Date.now()) / 1000);
+          if (timeLeftSecs > 0) {
+            setActiveSessionId(session._id);
+            setFocusState("focus");
+            setTimer(timeLeftSecs);
+            setSessionDuration(session.duration);
+            setDistractionCount(session.distractionCount || 0);
 
-      if (timeLeftSecs > 0) {
-        setActiveSessionId(storedSessionId);
-        setFocusState("focus");
-        setTimer(timeLeftSecs);
-        setSessionDuration(parseInt(storedDuration || "1500", 10));
-        setDistractionCount(parseInt(storedDistractions || "0", 10));
+            // Sync localStorage
+            localStorage.setItem("activeSessionId", session._id);
+            localStorage.setItem("focusState", "focus");
+            localStorage.setItem("sessionDuration", String(session.duration));
+            localStorage.setItem("sessionEndTime", String(endTimeMs));
+            localStorage.setItem("sessionDistractionCount", String(session.distractionCount || 0));
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("[FocusContext] Could not fetch active session from API:", err.message);
+      }
+
+      // Fallback: Restore Focus Session from Local Storage
+      const storedState = localStorage.getItem("focusState");
+      const storedEndTime = localStorage.getItem("sessionEndTime");
+      const storedSessionId = localStorage.getItem("activeSessionId");
+      const storedDuration = localStorage.getItem("sessionDuration");
+      const storedDistractions = localStorage.getItem("sessionDistractionCount");
+
+      if (storedState === "focus" && storedEndTime && storedSessionId) {
+        const endTimeMs = parseInt(storedEndTime, 10);
+        const timeLeftSecs = Math.ceil((endTimeMs - Date.now()) / 1000);
+
+        if (timeLeftSecs > 0) {
+          setActiveSessionId(storedSessionId);
+          setFocusState("focus");
+          setTimer(timeLeftSecs);
+          setSessionDuration(parseInt(storedDuration || "1500", 10));
+          setDistractionCount(parseInt(storedDistractions || "0", 10));
+        } else {
+          clearLocalFocusState();
+        }
+      } else if (storedState === "break") {
+        setFocusState("break");
+        setTimer(300); // Standard break reset
       } else {
-        // Naturally expired while offline / tab was closed
         clearLocalFocusState();
       }
-    }
-  }, [user]);
+    };
 
-  // Tick loop
+    fetchActiveSession();
+  }, [user, token]);
+
+  // Socket.io Real-time Event Listener Setup
+  useEffect(() => {
+    if (!token) {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+      return;
+    }
+
+    const socketUrl = "https://focusshield.onrender.com";
+    console.log("[Socket] Connecting to socket at", socketUrl);
+    const socket = io(socketUrl, {
+      auth: { token },
+      reconnection: true
+    });
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("[Socket] Connected to backend websocket successfully.");
+    });
+
+    socket.on("session-started", (data) => {
+      console.log("[Socket] Remote session started:", data);
+      const { session, endTime } = data;
+      setActiveSessionId(session._id);
+      setFocusState("focus");
+      setSessionDuration(session.duration);
+      setDistractionCount(session.distractionCount || 0);
+
+      const timeLeftSecs = Math.ceil((endTime - Date.now()) / 1000);
+      setTimer(timeLeftSecs > 0 ? timeLeftSecs : 0);
+
+      // Save to localStorage
+      localStorage.setItem("activeSessionId", session._id);
+      localStorage.setItem("focusState", "focus");
+      localStorage.setItem("sessionDuration", String(session.duration));
+      localStorage.setItem("sessionEndTime", String(endTime));
+      localStorage.setItem("sessionDistractionCount", String(session.distractionCount || 0));
+    });
+
+    socket.on("session-ended", (data) => {
+      console.log("[Socket] Remote session ended:", data);
+      const { session } = data;
+      
+      // Clear focus storage and transition to 5 minute break if completed, else idle
+      localStorage.removeItem("activeSessionId");
+      localStorage.removeItem("sessionEndTime");
+      localStorage.removeItem("sessionDuration");
+      localStorage.removeItem("sessionDistractionCount");
+      
+      if (session.completed) {
+        setFocusState("break");
+        setTimer(300); // 5 minutes break
+        localStorage.setItem("focusState", "break");
+      } else {
+        setFocusState("idle");
+        setTimer(1500); // Back to 25 mins
+        localStorage.setItem("focusState", "idle");
+      }
+      setActiveSessionId(null);
+      setDistractionCount(0);
+    });
+
+    socket.on("distraction-logged", (data) => {
+      console.log("[Socket] Distraction logged:", data);
+      const { session } = data;
+      setDistractionCount(session.distractionCount);
+      localStorage.setItem("sessionDistractionCount", String(session.distractionCount));
+    });
+
+    socket.on("disconnect", () => {
+      console.log("[Socket] Disconnected from backend.");
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [token]);
+
+  // Tick loop for countdown running locally
   useEffect(() => {
     let interval = null;
 
@@ -95,7 +215,6 @@ export const FocusProvider = ({ children }) => {
 
   const playAlertSound = () => {
     try {
-      // Audio cue using standard browser synthesis or tiny synthesis beep
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const oscillator = audioCtx.createOscillator();
       const gainNode = audioCtx.createGain();
@@ -176,7 +295,6 @@ export const FocusProvider = ({ children }) => {
     } catch (e) {
       console.warn("Could not log natural session completion:", e.message);
     } finally {
-      // Clear focus storage and transition to 5 minute break
       localStorage.removeItem("activeSessionId");
       localStorage.removeItem("sessionEndTime");
       localStorage.removeItem("sessionDuration");

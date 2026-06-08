@@ -1,4 +1,5 @@
 const sessionService = require("../services/sessionService");
+const socketService = require("../services/socketService");
 
 const sessionController = {
   // @desc    Start a new focus session
@@ -18,6 +19,13 @@ const sessionController = {
       const session = await sessionService.startSession({
         userId: req.user.id,
         duration: Number(duration),
+      });
+
+      // Broadcast to other client instances of this user
+      const endTime = Date.now() + (Number(duration) * 1000);
+      socketService.emitToUser(req.user.id, "session-started", {
+        session,
+        endTime,
       });
 
       return res.status(201).json({
@@ -56,6 +64,11 @@ const sessionController = {
         });
       }
 
+      // Broadcast to other client instances of this user
+      socketService.emitToUser(req.user.id, "session-ended", {
+        session: updatedSession,
+      });
+
       return res.status(200).json({
         success: true,
         message: "Focus session ended successfully",
@@ -89,10 +102,30 @@ const sessionController = {
         });
       }
 
+      // Broadcast to other client instances of this user
+      socketService.emitToUser(req.user.id, "distraction-logged", {
+        session: updatedSession,
+      });
+
       return res.status(200).json({
         success: true,
         message: "Distraction logged successfully",
         session: updatedSession,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  // @desc    Get active focus session
+  // @route   GET /api/sessions/active
+  // @access  Private
+  getActive: async (req, res, next) => {
+    try {
+      const session = await sessionService.getActiveSession(req.user.id);
+      return res.status(200).json({
+        success: true,
+        session,
       });
     } catch (error) {
       next(error);

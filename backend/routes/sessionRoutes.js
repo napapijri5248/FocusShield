@@ -11,6 +11,7 @@ router.use(protect);
 router.post("/start", sessionController.start);
 router.post("/end", sessionController.end);
 router.post("/distract", sessionController.registerDistraction);
+router.get("/active", sessionController.getActive);
 router.get("/history", sessionController.history);
 
 module.exports = router;

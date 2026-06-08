@@ -1,4 +1,7 @@
+importScripts("socket.io.min.js");
+
 let sessionTimeout = null;
+let socket = null;
 
 // Initialize badge and check session states on load
 chrome.runtime.onInstalled.addListener(() => {
@@ -6,24 +9,161 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.action.setBadgeText({ text: "" });
 });
 
+// Top-level initialization whenever service worker starts up
+chrome.storage.local.get("token", (data) => {
+  if (data.token) {
+    initializeSocketConnection(data.token);
+    syncActiveSessionFromServer(data.token);
+  }
+});
+
+// Alarm Listener for persistent expiration handling
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === "focusSessionTimer") {
+    handleSessionCompletion();
+  }
+});
+
+// Socket.io Connection Manager
+function initializeSocketConnection(token) {
+  if (socket) {
+    try {
+      socket.disconnect();
+    } catch (e) {}
+    socket = null;
+  }
+
+  const socketUrl = "https://focusshield.onrender.com";
+  console.log("[Background Worker] Connecting to Socket.io at:", socketUrl);
+
+  socket = io(socketUrl, {
+    auth: { token },
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    timeout: 20000
+  });
+
+  socket.on("connect", () => {
+    console.log("[Background Worker] Socket.io connected successfully.");
+  });
+
+  socket.on("session-started", (data) => {
+    console.log("[Background Worker] Real-time session-started event:", data);
+    const { session, endTime } = data;
+
+    chrome.storage.local.set({
+      activeSessionId: session._id,
+      focusState: "focus",
+      sessionDuration: session.duration,
+      sessionEndTime: endTime,
+      sessionDistractionCount: session.distractionCount || 0
+    }, () => {
+      startSessionTimer(endTime);
+    });
+  });
+
+  socket.on("session-ended", (data) => {
+    console.log("[Background Worker] Real-time session-ended event:", data);
+    const { session } = data;
+
+    chrome.storage.local.remove(["activeSessionId", "focusState", "sessionDuration", "sessionEndTime", "sessionDistractionCount"], () => {
+      stopSessionTimer();
+      if (session.completed) {
+        updateBadge("DONE", "#10b981");
+        chrome.runtime.sendMessage({ action: "TIMER_EXPIRED" });
+      } else {
+        updateBadge("", "#a855f7");
+        chrome.runtime.sendMessage({ action: "STOP_FOCUS_TRACKER" });
+      }
+    });
+  });
+
+  socket.on("distraction-logged", (data) => {
+    console.log("[Background Worker] Real-time distraction-logged event:", data);
+    const { session } = data;
+    chrome.storage.local.set({
+      sessionDistractionCount: session.distractionCount
+    });
+  });
+
+  socket.on("disconnect", (reason) => {
+    console.log("[Background Worker] Socket.io disconnected:", reason);
+  });
+}
+
+// Fetch active session from server to synchronize local state
+async function syncActiveSessionFromServer(token) {
+  try {
+    const response = await fetch("https://focusshield.onrender.com/api/sessions/active", {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success && data.session) {
+        const session = data.session;
+        const endTimeMs = new Date(session.startTime).getTime() + (session.duration * 1000);
+        const timeLeftMs = endTimeMs - Date.now();
+
+        if (timeLeftMs > 0) {
+          console.log("[Background Worker] Found active session on server. Syncing state.");
+          chrome.storage.local.set({
+            activeSessionId: session._id,
+            focusState: "focus",
+            sessionDuration: session.duration,
+            sessionEndTime: endTimeMs,
+            sessionDistractionCount: session.distractionCount || 0
+          }, () => {
+            startSessionTimer(endTimeMs);
+          });
+          return;
+        }
+      }
+    }
+
+    // Server says no active session, but local storage thinks there is one
+    chrome.storage.local.get("focusState", (data) => {
+      if (data.focusState === "focus") {
+        console.log("[Background Worker] Local focus active but server has no active session. Clearing local state.");
+        chrome.storage.local.remove(["activeSessionId", "focusState", "sessionDuration", "sessionEndTime", "sessionDistractionCount"], () => {
+          stopSessionTimer();
+          updateBadge("", "#a855f7");
+        });
+      }
+    });
+  } catch (error) {
+    console.error("[Background Worker] Failed to check active session from server:", error.message);
+  }
+}
+
 // Listen for message events from Popup or Web Client
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log("[Background Worker] Message Received:", message);
 
   if (message.action === "START_FOCUS_TRACKER") {
     startSessionTimer(message.endTime);
-    updateBadge("ON", "#10b981"); // Emerald color
   }
 
   if (message.action === "STOP_FOCUS_TRACKER") {
     stopSessionTimer();
-    updateBadge("", "#a855f7");
   }
 
   if (message.action === "AUTH_STATE_CHANGED") {
-    // If logout, ensure we stop active tracking
-    chrome.storage.local.get("focusState", (data) => {
-      if (!data.focusState) {
+    chrome.storage.local.get(["token", "focusState"], (data) => {
+      if (data.token) {
+        initializeSocketConnection(data.token);
+        syncActiveSessionFromServer(data.token);
+      } else {
+        if (socket) {
+          try {
+            socket.disconnect();
+          } catch (e) {}
+          socket = null;
+        }
         stopSessionTimer();
         updateBadge("", "#a855f7");
       }
@@ -96,33 +236,45 @@ function handleTabUrlCheck(tabId, urlString) {
 
 // Timer management
 function startSessionTimer(endTime) {
-  if (sessionTimeout) clearTimeout(sessionTimeout);
+  chrome.alarms.clear("focusSessionTimer");
+  if (sessionTimeout) {
+    clearTimeout(sessionTimeout);
+    sessionTimeout = null;
+  }
 
   const delay = endTime - Date.now();
   if (delay > 0) {
+    // Schedule persistent alarm
+    chrome.alarms.create("focusSessionTimer", { when: endTime });
+
+    // Local timeout for rapid response when service worker is alive
     sessionTimeout = setTimeout(() => {
-      console.log("[Background Worker] Session timer naturally completed.");
-      
-      // Clean up focus state in local storage
-      chrome.storage.local.remove(["activeSessionId", "focusState", "sessionDuration", "sessionEndTime"], () => {
-        updateBadge("DONE", "#10b981");
-        
-        // Notify any active popups/tabs
-        chrome.runtime.sendMessage({ action: "TIMER_EXPIRED" });
-      });
+      handleSessionCompletion();
     }, delay);
     
     // Start periodic countdown indicator on extension icon badge
     tickBadgeCountdown(endTime);
+  } else {
+    handleSessionCompletion();
   }
 }
 
 function stopSessionTimer() {
+  chrome.alarms.clear("focusSessionTimer");
   if (sessionTimeout) {
     clearTimeout(sessionTimeout);
     sessionTimeout = null;
   }
   updateBadge("", "#a855f7");
+}
+
+function handleSessionCompletion() {
+  console.log("[Background Worker] Session timer naturally completed.");
+  chrome.storage.local.remove(["activeSessionId", "focusState", "sessionDuration", "sessionEndTime", "sessionDistractionCount"], () => {
+    updateBadge("DONE", "#10b981");
+    // Notify any active popups/tabs
+    chrome.runtime.sendMessage({ action: "TIMER_EXPIRED" });
+  });
 }
 
 // Tick badge text to display remaining minutes
